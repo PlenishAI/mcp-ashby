@@ -108,10 +108,15 @@ def _trim_job(job: dict) -> dict:
         "departmentId": job.get("departmentId"),
         "locationId": job.get("locationId"),
     }
-    # interviewPlan is an object with an id, not a top-level interviewPlanId
-    interview_plan = job.get("interviewPlan")
-    if isinstance(interview_plan, dict):
-        result["interviewPlanId"] = interview_plan.get("id")
+    # Ashby uses defaultInterviewPlanId at the top level; also check for
+    # a nested interviewPlan object as a fallback.
+    plan_id = job.get("defaultInterviewPlanId")
+    if not plan_id:
+        interview_plan = job.get("interviewPlan")
+        if isinstance(interview_plan, dict):
+            plan_id = interview_plan.get("id")
+    if plan_id:
+        result["interviewPlanId"] = plan_id
     # hiringTeam members have firstName/lastName, not a single name field
     if job.get("hiringTeam"):
         result["hiringTeam"] = [
