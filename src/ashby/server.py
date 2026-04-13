@@ -132,16 +132,22 @@ def _trim_job(job: dict) -> dict:
 
 def _trim_candidate(cand: dict) -> dict:
     emails = cand.get("emailAddresses", [])
-    return {
+    result: dict[str, Any] = {
         "id": cand.get("id"),
         "name": cand.get("name"),
         "emails": [e.get("value") for e in emails] if emails else [],
         "phoneNumbers": [p.get("value") for p in cand.get("phoneNumbers", [])] if cand.get("phoneNumbers") else [],
-        "linkedInUrl": cand.get("linkedInUrl"),
+        "socialLinks": {s["type"]: s["url"] for s in cand.get("socialLinks", []) if s.get("type") and s.get("url")},
+        "position": cand.get("position"),
+        "school": cand.get("school"),
+        "location": cand.get("location", {}).get("locationSummary") if cand.get("location") else None,
         "applicationIds": cand.get("applicationIds", []),
         "tags": [t.get("name") if isinstance(t, dict) else t for t in cand.get("tags", [])],
         "createdAt": cand.get("createdAt"),
     }
+    if cand.get("resumeFileHandle"):
+        result["resumeFileName"] = cand["resumeFileHandle"].get("name")
+    return result
 
 
 def _trim_application(app: dict) -> dict:
@@ -162,17 +168,6 @@ def _trim_application(app: dict) -> dict:
         result["archiveReason"] = _pick(app["archiveReason"], ["id", "title"])
     return result
 
-
-def _trim_interview(interview: dict) -> dict:
-    result = _pick(interview, [
-        "id", "status", "scheduledStartTime", "scheduledEndTime",
-        "applicationId", "interviewStageId",
-    ])
-    if interview.get("interviewers"):
-        result["interviewers"] = [
-            _pick(i, ["name", "email"]) for i in interview["interviewers"]
-        ]
-    return result
 
 
 def _trim_note(note: dict) -> dict:
@@ -203,8 +198,6 @@ RESPONSE_TRIMMERS = {
     "/candidate.info": lambda r: _trim_candidate(r.get("results", r)),
     "/application.list": lambda r: _trim_paginated(r, _trim_application),
     "/application.info": lambda r: _trim_application(r.get("results", r)),
-    "/interview.list": lambda r: _trim_paginated(r, _trim_interview),
-    "/interview.info": lambda r: _trim_interview(r.get("results", r)),
     "/candidate.listNotes": lambda r: _trim_paginated(r, _trim_note),
 }
 
@@ -550,29 +543,65 @@ TOOLS = [
 
     # ── Interviews ────────────────────────────────────────────────────────
     types.Tool(
-        name="interview_list",
+        name="application_feedback_list",
         description=(
-            "List all scheduled interviews with pagination. Returns interview status, "
-            "times, interviewers, and linked application. Pass allPages=true to fetch all."
+            "List all interview scorecards and feedback submissions for a candidate application. "
+            "Returns structured feedback with submitted values, scores, and submitter info. "
+            "Use applicationId from candidate_full_profile or application_info."
         ),
         inputSchema={
             "type": "object",
             "properties": {
+                "applicationId": {"type": "string", "description": "The application ID (UUID)."},
+                "limit": {"type": "integer", "description": "Max results per page (default 100)."},
+                "cursor": {"type": "string", "description": "Cursor for next page."},
+            },
+            "required": ["applicationId"],
+        },
+    ),
+    types.Tool(
+        name="interview_schedule_list",
+        description=(
+            "List scheduled interview instances. In Ashby, interview schedules are separate from interview "
+            "definitions — this returns the scheduled instances with their interviewScheduleId. "
+            "Filter by applicationId to find schedules for a specific candidate application. "
+            "Use interviewScheduleId from results to call interview_schedule_list_feedback."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "applicationId": {"type": "string", "description": "Filter schedules by application ID."},
                 "limit": {"type": "integer", "description": "Max results per page."},
                 "cursor": {"type": "string", "description": "Cursor for next page."},
-                "allPages": {"type": "boolean", "description": "If true, auto-paginate and return ALL interviews."},
             },
         },
     ),
     types.Tool(
-        name="interview_info",
-        description="Get details of a single interview by ID.",
+        name="interview_schedule_list_feedback",
+        description=(
+            "List all feedback submissions for a scheduled interview. "
+            "Use interview_schedule_list (filtered by applicationId) to get the interviewScheduleId first."
+        ),
         inputSchema={
             "type": "object",
             "properties": {
-                "id": {"type": "string", "description": "The interview ID."},
+                "interviewScheduleId": {"type": "string", "description": "The scheduled interview ID."},
             },
-            "required": ["id"],
+            "required": ["interviewScheduleId"],
+        },
+    ),
+    types.Tool(
+        name="interview_schedule_get_feedback",
+        description=(
+            "Get a single feedback submission by its ID. "
+            "Get feedback IDs from interview_schedule_list_feedback first."
+        ),
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "feedbackId": {"type": "string", "description": "The feedback submission ID."},
+            },
+            "required": ["feedbackId"],
         },
     ),
 
@@ -661,8 +690,10 @@ TOOL_ENDPOINT_MAP = {
     "application_change_stage": "/application.change_stage",
     "interview_stage_list": "/interviewStage.list",
     "interview_plan_list": "/interviewPlan.list",
-    "interview_list": "/interview.list",
-    "interview_info": "/interview.info",
+    "application_feedback_list": "/applicationFeedback.list",
+    "interview_schedule_list": "/interviewSchedule.list",
+    "interview_schedule_list_feedback": "/interviewSchedule.listFeedback",
+    "interview_schedule_get_feedback": "/interviewSchedule.getFeedback",
 }
 
 # Lookup type -> (endpoint, archive_param_name)
@@ -678,7 +709,7 @@ LOOKUP_TYPE_MAP = {
 # Tools that support the allPages parameter
 PAGINATED_TOOLS = {
     "job_list", "candidate_list", "candidate_list_notes",
-    "application_list", "interview_list",
+    "application_list", "interview_schedule_list",
 }
 
 # Write tools — these get a confirmation reminder in the response (#10)
@@ -832,7 +863,6 @@ async def handle_call_tool(name: str, arguments: dict[str, Any]) -> list[types.T
                 "/job.list": _trim_job,
                 "/candidate.list": _trim_candidate,
                 "/application.list": _trim_application,
-                "/interview.list": _trim_interview,
                 "/candidate.listNotes": _trim_note,
             }
             trimmer = trimmer_map.get(endpoint)
