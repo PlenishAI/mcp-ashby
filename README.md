@@ -118,12 +118,12 @@ To update, just `git pull` from the repo directory.
 |---|---|
 | `candidate_list` | List all candidates with cursor pagination |
 | `candidate_search` | Search candidates by email and/or name |
-| `candidate_info` | Get full details of a candidate by ID |
+| `candidate_info` | Get full details of a candidate by ID (includes social links, location, resume filename) |
 | `candidate_create` | Create a new candidate |
 | `candidate_create_note` | Add an HTML-formatted note to a candidate |
 | `candidate_list_notes` | List all notes for a candidate |
 | `candidate_add_tag` | Add a tag to a candidate |
-| `candidate_tag_list` | List all available candidate tags |
+| `candidate_full_profile` | Fetch candidate info, notes, and all applications in one call |
 
 ### Applications
 
@@ -133,6 +133,7 @@ To update, just `git pull` from the repo directory.
 | `application_info` | Get full details of an application by ID |
 | `application_create` | Create an application linking a candidate to a job |
 | `application_change_stage` | Move an application to a different interview stage |
+| `application_feedback_list` | List all interview scorecards/feedback for an application |
 
 ### Interviews & Pipeline
 
@@ -140,18 +141,16 @@ To update, just `git pull` from the repo directory.
 |---|---|
 | `interview_stage_list` | List interview stages for a given interview plan |
 | `interview_plan_list` | List all interview plans |
-| `interview_list` | List all interviews with cursor pagination |
-| `interview_info` | Get details of a single interview by ID |
+| `interview_schedule_list` | List scheduled interview instances, filterable by applicationId |
+| `interview_schedule_list_feedback` | List feedback submissions for a scheduled interview |
+| `interview_schedule_get_feedback` | Get a single feedback submission by ID |
+| `pipeline_summary` | Summarize all applications for a job, grouped by stage and status |
 
 ### Reference Data
 
 | Tool | Description |
 |---|---|
-| `department_list` | List all departments |
-| `user_list` | List all users (team members) |
-| `source_list` | List all candidate sources |
-| `archive_reason_list` | List all archive reasons |
-| `location_list` | List all locations |
+| `lookup` | Fetch reference data by type: `department`, `user`, `source`, `archiveReason`, `location`, `candidateTag` |
 
 ## Troubleshooting
 
